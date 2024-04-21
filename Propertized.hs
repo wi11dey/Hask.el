@@ -9,6 +9,7 @@
 {-# LANGUAGE TypeSynonyms #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
 import Data.String
 import GHC.Records
@@ -62,10 +63,11 @@ class Lispable l where
   toLisp :: l → Lisp
 
   default toLisp :: (Generic l, GenericLispable (Rep l)) ⇒ l → Lisp
-  toLisp = ...
+  toLisp = genericToLisp (Proxy :: Proxy (Rep l))
 
-class GenericLispable l where
-  genericToLisp :: Proxy l → Lisp
+class GenericLispable r where
+  genericToLisp :: Proxy r → Lisp
+  
 
 type PropertizedChar = (Char, Properties)
 
@@ -147,6 +149,27 @@ data Image = Image {
   }
   deriving Generic
 
+baseImage type_ source = Image {
+  type_,
+  source,
+  margin = Nothing,
+  ascent = Nothing,
+  relief = Nothing,
+  width = Nothing,
+  height = Nothing,
+  maxWidth = Nothing,
+  maxHeight = Nothing,
+  scale = Nothing,
+  rotation = Nothing,
+  flip = False,
+  transformSmoothing = False,
+  index = Nothing,
+  conversion = Nothing,
+  mask = Nothing,
+  pointer = Nothing,
+  map_ = []
+  }
+
 instance HasField "type" Image Type where
   getField = type_
 
@@ -163,7 +186,7 @@ data Type =
   PNG |
   SVG |
   WebP
-  deriving Show
+  deriving (Show, Generic, Lispable)
 
 data Source =
   File String |
@@ -198,6 +221,7 @@ data PointerShape =
   HDrag |
   NHDrag |
   Hourglass
+  deriving (Show, Generic, Lispable)
 
 data Point = Point {
   x :: Number,
