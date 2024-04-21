@@ -13,6 +13,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 
 import Data.String
+import Data.Coerce
 import GHC.Records
 import GHC.TypeLits
 
@@ -23,9 +24,6 @@ data Lisp =
   Symbol Symbol |
   Number Number |
   Vector [Lisp]
-
-instance Lispable Lisp where
-  toLisp = id
 
 instance Show Lisp where
   showsPrec _ (Cons car cdr@(Cons _ _)) =
@@ -60,15 +58,21 @@ instance Enum Number where
 
 newtype Symbol = Symbol String
 
+toCons :: [Lisp] → Lisp
+toCons [] = Nil
+toCons head:tail = Cons head $ toCons tail
+
 class Lispable l where
   toLisp :: l → Lisp
 
   default toLisp :: (Generic l, GenericLispable (Rep l)) ⇒ l → Lisp
   toLisp = genericToLisp (Proxy :: Proxy (Rep l))
 
+instance Lispable Lisp where
+  toLisp = id
+
 class GenericLispable r where
   genericToLisp :: Proxy r → Lisp
-  
 
 data Properties = Properties {
   display :: [Display]
@@ -256,20 +260,19 @@ data HotSpot = HotSpot {
   }
 
 type PropertizedChar = (Char, Properties)
-type PropertizedString = [PropertizedChar]
+newtype PropertizedString = PropertizedString [PropertizedChar]
 
 class IsString PropertizedString where
-  fromString = map (, mempty)
+  fromString = coerce . map (, mempty)
 
 class Propertized s where
   propertized :: s → PropertizedString
-  propertized = fromString . show
 
 instance Show s ⇒ Propertized s where
   propertized = fromString . show
 
-instance {-# OVERLAPPING #-} Show PropertizedString where
-  show (unzip → (raw, allProperties)) =
+instance Show PropertizedString where
+  show (unzip . coerce → (raw, allProperties)) =
     ('#':) $
     show $
     toCons $
@@ -279,9 +282,5 @@ instance {-# OVERLAPPING #-} Show PropertizedString where
         | properties ← toLisp <$> allProperties,
         then group by properties using group]
 
-toCons :: [Lisp] → Lisp
-toCons [] = Nil
-toCons head:tail = Cons head $ toCons tail
-
 propertize :: Propertized s ⇒ s → Properties → PropertizedString
-propertize s properties = fmap (<> properties) <$> (propertized s)
+propertize s properties = coerce $ fmap (<> properties) <$> (propertized s)
