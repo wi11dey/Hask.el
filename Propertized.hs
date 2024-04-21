@@ -4,7 +4,6 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ParallelListComp #-}
 {-# LANGUAGE TransformListComp #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeSynonyms #-}
@@ -13,6 +12,7 @@
 {-# LANGUAGE ViewPatterns #-}
 
 import Data.String
+import GHC.Exts
 import GHC.Records
 import GHC.TypeLits
 
@@ -65,14 +65,17 @@ toCons :: [Lisp] → Lisp
 toCons [] = Nil
 toCons head:tail = Cons head $ toCons tail
 
-class Lispable l where
+class ToLisp l where
   toLisp :: l → Lisp
 
-  default toLisp :: (Generic l, Lispable (Rep l)) ⇒ l → Lisp
+  default toLisp :: (Generic l, ToLisp (Rep l)) ⇒ l → Lisp
   toLisp = genericToLisp . from
 
-instance Lispable Lisp where
+instance ToLisp Lisp where
   toLisp = id
+
+class Splice l where
+  prefix :: l → ShowS
 
 data Properties = Properties {
   display :: [Display]
@@ -90,27 +93,36 @@ instance Monoid Properties where
 
 data Display =
   Replace PropertizedString |
-  Space Space |
+  Space {
+    width :: Maybe Width,
+    height :: Maybe Dimension,
+    ascent :: Maybe PixelSpecification
+    } |
   Image Image
-
-data Space = Space {
-  width :: Maybe Width,
-  height :: Maybe Dimension,
-  ascent :: Maybe PixelSpecification
-  }
 
 data Dimension =
   Absolute PixelSpecification |
   Relative Number
 
+instance Splice Dimension where
+  prefix (Absolute _) = (':':)
+  prefix (Relative _) = (":relative-" ++)
+
 data Width =
   Width Dimension |
   AlignTo PixelSpecification
 
-data PixelSpecification =
-  Character Int
+instance Splice Width =
+  prefix (Width _) = id
+  prefix (AlignTo _) = ":align-to"
 
-instance Lispable Space where
+data PixelSpecification =
+  Characters Int
+
+instance ToLisp PixelSpecification where
+  toLisp (Characters c) = Number $ fromInt c
+
+instance ToLisp Space where
   toLisp space =
     Cons (Symbol "space")
     $ toCons
@@ -127,7 +139,7 @@ instance Lispable Space where
       heightForms (Absolute spec) = forms "height" spec
       heightForms (Width (Relative factor)) = forms "relative-height" factor
 
-      forms :: Lispable l ⇒ String → l → [Lisp]
+      forms :: ToLisp l ⇒ String → l → [Lisp]
       forms symbol form = [Symbol ":":symbol, toLisp form]
 
 data Image = Image {
@@ -152,7 +164,7 @@ data Image = Image {
   }
   deriving Generic
 
-baseImage type_ source = Image {
+image type_ source = Image {
   type_,
   source,
   margin = Nothing,
@@ -189,9 +201,9 @@ data Type =
   PNG |
   SVG |
   WebP
-  deriving (Show, Lispable)
+  deriving (Show, ToLisp)
 
-instance Lispable Type where
+instance ToLisp Type where
   toLisp = Symbol . map toLower . show
 
 data Source =
@@ -231,14 +243,14 @@ data PointerShape =
   HDrag |
   NHDrag |
   Hourglass
-  deriving (Show, Generic, Lispable)
+  deriving (Show, Generic, ToLisp)
 
 data Point = Point {
   x :: Number,
   y :: Number
   }
 
-instance Lispable Point where
+instance ToLisp Point where
   toLisp (Point x y) = Cons x y
 
 data Area =
@@ -252,7 +264,7 @@ data Area =
     } |
   Polygon [Point]
 
-instance Lispable Area where
+instance ToLisp Area where
   toLisp (Rectangle upperLeft bottomRight) =
     Cons (Symbol "rect") (Cons (toLisp upperLeft) (toLisp bottomRight))
   toLisp (Rect center radius) =
@@ -278,8 +290,10 @@ class IsString PropertizedString where
 class Propertized s where
   propertized :: s → PropertizedString
 
-instance Show s ⇒ Propertized s where
+  default propertized :: Show s ⇒ s → PropertizedString
   propertized = fromString . show
+
+instance {-# OVERLAPPABLE #-} Show s ⇒ Propertized s
 
 instance {-# OVERLAPPING #-} Show PropertizedChar where
   showList (unzip → (raw, propertiesList)) =
@@ -289,18 +303,25 @@ instance {-# OVERLAPPING #-} Show PropertizedChar where
     toCons $
     String raw:
       concat [[head i, last i, the properties]
-        | i ← toLisp <$> [0..]
-        | properties ← toLisp <$> propertiesList,
-        then group by properties using group]
+        | (toLisp → i, toLisp → properties) ←
+          zip [0..] propertiesList,
+        then group by properties using groupBy . on (==)]
+
+groupRuns f = groupBy ((==) `on` f)
 
 propertize :: Propertized s ⇒ s → Properties → PropertizedString
 propertize s properties = fmap (<> properties) <$> (propertized s)
 
-kebabCase :: String → String
-kebabCase "" = ""
-kebabCase [letter] = toLower letter
-kebabCase first:rest@(second:rest)
+toKebab :: String → String
+toKebab "" = ""
+toKebab "_" = ""
+toKebab [letter] = [toLower letter]
+toKebab (first:tail@(second:rest))
   | isLowerCase first && isUpperCase second =
-      toLower first:'-':toLower second:kebabCase tail
+      toLower first:'-':toLower second:toKebab rest
   | otherwise =
-      toLower first:kebabCase rest
+      toLower first:toKebab tail
+
+propertize "asdf" $ Properties {
+  display = [space { width = Just $ Width $ Relative 10 }]
+  }
