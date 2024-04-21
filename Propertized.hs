@@ -10,6 +10,7 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 import Data.String
 import GHC.Records
@@ -68,8 +69,6 @@ class Lispable l where
 class GenericLispable r where
   genericToLisp :: Proxy r → Lisp
   
-
-type PropertizedChar = (Char, Properties)
 
 data Properties = Properties {
   display :: [Display]
@@ -256,16 +255,20 @@ data HotSpot = HotSpot {
   pointer :: Maybe PointerShape
   }
 
+type PropertizedChar = (Char, Properties)
 type PropertizedString = [PropertizedChar]
 
 class IsString PropertizedString where
   fromString = map (, mempty)
 
-class Show s ⇒ Propertized s where
+class Propertized s where
   propertized :: s → PropertizedString
   propertized = fromString . show
 
-instance Show PropertizedString where
+instance Show s ⇒ Propertized s where
+  propertized = fromString . show
+
+instance {-# OVERLAPPING #-} Show PropertizedString where
   show (unzip → (raw, allProperties)) =
     ('#':) $
     show $
