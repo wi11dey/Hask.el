@@ -13,7 +13,6 @@
 {-# LANGUAGE UndecidableInstances #-}
 
 import Data.String
-import Data.Coerce
 import GHC.Records
 import GHC.TypeLits
 
@@ -260,10 +259,10 @@ data HotSpot = HotSpot {
   }
 
 type PropertizedChar = (Char, Properties)
-newtype PropertizedString = PropertizedString [PropertizedChar]
+type PropertizedString = [PropertizedChar]
 
 class IsString PropertizedString where
-  fromString = coerce . map (, mempty)
+  fromString = map (, mempty)
 
 class Propertized s where
   propertized :: s → PropertizedString
@@ -271,8 +270,8 @@ class Propertized s where
 instance Show s ⇒ Propertized s where
   propertized = fromString . show
 
-instance Show PropertizedString where
-  show (unzip . coerce → (raw, allProperties)) =
+instance {-# OVERLAPPING #-} Show PropertizedString where
+  show (unzip → (raw, allProperties)) =
     ('#':) $
     show $
     toCons $
@@ -283,4 +282,4 @@ instance Show PropertizedString where
         then group by properties using group]
 
 propertize :: Propertized s ⇒ s → Properties → PropertizedString
-propertize s properties = coerce $ fmap (<> properties) <$> (propertized s)
+propertize s properties = fmap (<> properties) <$> (propertized s)
