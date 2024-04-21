@@ -198,7 +198,11 @@ data Conversion =
   Laplace |
   Emboss |
   EdgeDetection {
-    matrix :: (Number, Number, Number, Number, Number, Number, Number, Number, Number),
+    matrix :: (
+      Number, Number, Number,
+      Number, Number, Number,
+      Number, Number, Number
+      ),
     colorAdjust :: Maybe Number
     } |
   Disabled
