@@ -1,16 +1,16 @@
-{-# LANGUAGE UnicodeSyntax #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE ParallelListComp #-}
-{-# LANGUAGE TransformListComp #-}
-{-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TypeSynonyms #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ParallelListComp #-}
+{-# LANGUAGE TransformListComp #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeSynonyms #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE UnicodeSyntax #-}
+{-# LANGUAGE ViewPatterns #-}
 
 import Data.String
 import GHC.Records
@@ -189,7 +189,10 @@ data Type =
   PNG |
   SVG |
   WebP
-  deriving (Show, Generic, Lispable)
+  deriving (Show, Lispable)
+
+instance Lispable Type where
+  toLisp = Symbol . map toLower . show
 
 data Source =
   File String |
@@ -263,6 +266,9 @@ data HotSpot = HotSpot {
   pointer :: Maybe PointerShape
   }
 
+instance HasField "id" HotSpot Symbol where
+  getField = id_
+
 type PropertizedChar = (Char, Properties)
 type PropertizedString = [PropertizedChar]
 
@@ -289,3 +295,12 @@ instance {-# OVERLAPPING #-} Show PropertizedChar where
 
 propertize :: Propertized s ⇒ s → Properties → PropertizedString
 propertize s properties = fmap (<> properties) <$> (propertized s)
+
+kebabCase :: String → String
+kebabCase "" = ""
+kebabCase [letter] = toLower letter
+kebabCase first:rest@(second:rest)
+  | isLowerCase first && isUpperCase second =
+      toLower first:'-':toLower second:kebabCase tail
+  | otherwise =
+      toLower first:kebabCase rest
