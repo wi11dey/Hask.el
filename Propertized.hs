@@ -19,10 +19,10 @@ import GHC.TypeLits
 data Lisp =
   Cons LispObject LispObject |
   Nil |
+  Vector [Lisp] |
+  Symbol String |
   String String |
-  Symbol Symbol |
-  Number Number |
-  Vector [Lisp]
+  Number Number
 
 instance Show Lisp where
   showsPrec _ (Cons car cdr@(Cons _ _)) =
@@ -42,20 +42,24 @@ instance Show Lisp where
 
   showsPrec _ (Vector elements) = showList elements
 
-  showsPrec prec (Number n) = showsPrec prec n
+  showsPrec _ (Symbol symbol) = (symbol ++) -- TODO use elisp escaping instead
 
   showsPrec _ (String s) = showList s -- TODO use elisp escaping instead
+
+  showsPrec prec (Number n) = showsPrec prec n
 
 data Number =
   Integer Integer |
   Double Double
 
+instance Show Number where
+  showsPrec prec (Integer i) = showsPrec prec i
+  showsPrec prec (Double d) = showsPrec prec d
+
 instance Enum Number where
   fromEnum (Integer i) = fromEnum i
   fromEnum (Double d) = fromEnum d
   toEnum = Integer
-
-newtype Symbol = Symbol String
 
 toCons :: [Lisp] → Lisp
 toCons [] = Nil
@@ -64,14 +68,11 @@ toCons head:tail = Cons head $ toCons tail
 class Lispable l where
   toLisp :: l → Lisp
 
-  default toLisp :: (Generic l, GenericLispable (Rep l)) ⇒ l → Lisp
-  toLisp = genericToLisp (Proxy :: Proxy (Rep l))
+  default toLisp :: (Generic l, Lispable (Rep l)) ⇒ l → Lisp
+  toLisp = genericToLisp . from
 
 instance Lispable Lisp where
   toLisp = id
-
-class GenericLispable r where
-  genericToLisp :: Proxy r → Lisp
 
 data Properties = Properties {
   display :: [Display]
@@ -274,15 +275,16 @@ class Propertized s where
 instance Show s ⇒ Propertized s where
   propertized = fromString . show
 
-instance {-# OVERLAPPING #-} Show PropertizedString where
-  show (unzip → (raw, allProperties)) =
+instance {-# OVERLAPPING #-} Show PropertizedChar where
+  showList (unzip → (raw, propertiesList)) =
+    (++) $
     ('#':) $
     show $
     toCons $
     String raw:
       concat [[head i, last i, the properties]
         | i ← toLisp <$> [0..]
-        | properties ← toLisp <$> allProperties,
+        | properties ← toLisp <$> propertiesList,
         then group by properties using group]
 
 propertize :: Propertized s ⇒ s → Properties → PropertizedString
