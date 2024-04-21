@@ -25,6 +25,28 @@ data Lisp =
 instance Lispable Lisp where
   toLisp = id
 
+instance Show Lisp where
+  showsPrec _ (Cons car cdr@(Cons _ _)) =
+    ('(':) .
+    (show car ++) .
+    (' ':) .
+    (show cdr ++) .
+    (')':)
+  showsPrec _ (Cons car cdr) =
+    ('(':) .
+    (show car ++) .
+    (" . " ++) .
+    (show cdr ++) .
+    (')':)
+
+  showsPrec _ Nil = ("nil" ++)
+
+  showsPrec _ (Vector elements) = showList elements
+
+  showsPrec prec (Number n) = showsPrec prec n
+
+  showsPrec _ (String s) = showList s -- TODO use elisp escaping instead
+
 data Number =
   Integer Integer |
   Double Double
@@ -221,10 +243,10 @@ class Show s ⇒ Propertized s where
 
 instance Show PropertizedString where
   show (unzip → (raw, allProperties)) =
-    ('#':)
-    $ show
-    $ toCons
-    $ String raw:
+    ('#':) $
+    show $
+    toCons $
+    String raw:
       concat [[head i, last i, the properties]
         | i ← toLisp <$> [0..]
         | properties ← toLisp <$> allProperties,
